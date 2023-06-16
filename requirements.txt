@@ -9,7 +9,6 @@ botorch
 tabulate==0.8.9
 Pillow==8.3.2
 torch==1.9.1
-numpy==1.21.2
 scipy==1.7.1
 gpytorch==1.5.1
 openpyxl==3.0.9
