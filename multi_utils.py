@@ -6,7 +6,6 @@ import random
 random.seed(0)
 torch.manual_seed(0)
 from botorch.test_functions.multi_objective import C2DTLZ2
-import tqdm
 from botorch.models.gp_regression import SingleTaskGP
 from botorch.models.transforms.outcome import Standardize
 from gpytorch.mlls.exact_marginal_log_likelihood import ExactMarginalLogLikelihood
