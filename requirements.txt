@@ -5,7 +5,7 @@ scikit-learn==1.0.2
 openpyxl==3.0.9
 plotly==5.7.0
 protobuf~=3.19.0
-botorch = 0.8.4
+botorch == 0.8.4
 tabulate==0.8.9
 Pillow==8.3.2
 torch==1.9.1
