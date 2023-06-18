@@ -6,6 +6,7 @@ import random
 random.seed(0)
 torch.manual_seed(0)
 from botorch.test_functions.multi_objective import C2DTLZ2
+import tqdm
 from botorch.models.gp_regression import SingleTaskGP
 from botorch.models.transforms.outcome import Standardize
 from gpytorch.mlls.exact_marginal_log_likelihood import ExactMarginalLogLikelihood
@@ -85,8 +86,8 @@ class MultiObjectiveBO:
         self.NUM_RESTARTS = 10
         self.RAW_SAMPLES = 512
 
-        self.standard_bounds = torch.zeros(2, self.bounds.size(0), **self.tkwargs)
-        self.standard_bounds[1] = 1
+        #self.standard_bounds = torch.zeros(2, self.bounds.size(0), **self.tkwargs)
+        #self.standard_bounds[1] = 1
 
         # If a reference point is not provided, use the minimum of the train_y as reference point
         self.ref_point = reference_point if reference_point is not None else torch.min(train_y, dim=0).values
@@ -138,7 +139,7 @@ class MultiObjectiveBO:
 
         candidates, _ = optimize_acqf(
             acq_function=acq_func,
-            bounds=self.standard_bounds,
+            bounds=self.bounds,#self.standard_bounds,
             q=self.batch_size,
             num_restarts=self.NUM_RESTARTS,
             raw_samples=self.RAW_SAMPLES,  # used for initialization heuristic
@@ -147,5 +148,6 @@ class MultiObjectiveBO:
         )
 
         # observe new values
-        new_x = unnormalize(candidates.detach(), bounds=self.bounds)
+        #new_x = unnormalize(candidates.detach(), bounds=self.bounds)
+        new_x = candidates.detach()
         return new_x

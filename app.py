@@ -124,7 +124,7 @@ with tab_opt:
             # Save the dataframe to the session state
             st.session_state.df_train = df_train
             # Initialize the BO object
-            st.session_state.BO = MultiObjectiveBO(train_x=train_x, train_y=train_y, bounds=bounds_tensor)
+            st.session_state.MOBO = MultiObjectiveBO(train_x=train_x, train_y=train_y, bounds=bounds_tensor)
             st.session_state.ref_point = torch.min(train_y, dim=0).values  # note the correction here
 
         else:
@@ -176,6 +176,8 @@ with tab_opt:
                 st.write("Queue of proposed experiment(s)")
                 # Update the BO object
                 st.session_state.MOBO = MultiObjectiveBO(train_x=train_x, train_y=train_y, bounds=bounds_tensor, reference_point=st.session_state.ref_point)
+                #st.write(train_x.shape)
+                #st.write(st.session_state.ref_point.shape)
                 suggested_point = st.session_state.MOBO.optimize_acquisition()
                 # Convert suggested point to numpy array
                 suggested_point_np = suggested_point.detach().numpy().flatten()
@@ -313,13 +315,6 @@ color_list = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"]
 
 with tab_preds:
     if uploaded_file is not None:
-        if "df_test" not in st.session_state:
-            max_index = train_y.argmax().item()-1
-
-            max_input = train_x[max_index]
-            initial_test_df = pd.DataFrame(max_input.numpy()[np.newaxis, :], columns=col_names_x)
-            st.session_state.df_test = initial_test_df.reset_index().rename(columns={'index': 'Index'})
-
         preds_col1, preds_col2 = st.columns([0.7,1.0])
 
         with preds_col1:
@@ -327,13 +322,15 @@ with tab_preds:
             st.write("Add test points at which you want to <br> estimate the performance", unsafe_allow_html=True)
             st.write("#")
             st.write("#")
+            if "df_test" not in st.session_state or st.session_state.df_test is None:
+                max_index = train_y.argmax().item()-1
+                max_input = train_x[max_index]
+                initial_test_df = pd.DataFrame(max_input.numpy()[np.newaxis, :], columns=col_names_x)
+                st.session_state.df_test = initial_test_df.reset_index().rename(columns={'index': 'Index'})
+
             df_test = st.experimental_data_editor(st.session_state.df_test, width=500, height=200, num_rows="dynamic")
-
-            st.session_state.df_test = df_test.copy()
             st.session_state.df_test.reset_index(drop=True, inplace=True)
-
             # Find rows without missing values
-            complete_rows_mask_test = st.session_state.df_test.notna().all(axis=1)
 
             # Initialize the figure outside of the loop
             fig = go.Figure()
@@ -379,65 +376,69 @@ with tab_preds:
             st.session_state.plot = fig
 
             # Check if all rows are complete
-            if complete_rows_mask_test.all():
-                # Separate the features
+            #if complete_rows_mask_test.all():
+
+
+            if st.button("Predict"):
+                st.session_state.df_test = df_test  # Store user input
+                complete_rows_mask_test = st.session_state.df_test.notna().all(axis=1)
+
                 test_x = st.session_state.df_test[complete_rows_mask_test].iloc[:, 1:]  # Exclude 'Point Index'
                 # Convert pandas DataFrames to PyTorch tensors
                 test_x = torch.tensor(test_x.values, dtype=torch.float32)
+                # Initialize lists for means and variances
+                means = []
+                std_devs = []
 
-                if st.button("Predict"):
-                    # Initialize lists for means and variances
-                    means = []
-                    std_devs = []
+                # Make predictions for complete rows
+                for i, idx in enumerate(test_x):
+                    input_tensor = torch.tensor(idx).reshape(1, -1)
+                    mean, std_dev = st.session_state.MOBO.get_posterior_stats(input_tensor)
 
-                    # Make predictions for complete rows
-                    for i, idx in enumerate(test_x):
-                        input_tensor = torch.tensor(idx).reshape(1, -1)
-                        mean, std_dev = st.session_state.MOBO.get_posterior_stats(input_tensor)
+                    means.append(mean)
+                    std_devs.append(std_dev)
 
-                        means.append(mean)
-                        std_devs.append(std_dev)
+                    # Calculate the ellipse points for each mean and std_dev pair
+                    # Number of points to generate
+                    num_points = 300
+                    # The t values to generate points
+                    t = np.linspace(0, 2*np.pi, num_points)
 
-                        # Calculate the ellipse points for each mean and std_dev pair
-                        # Number of points to generate
-                        num_points = 300
-                        # The t values to generate points
-                        t = np.linspace(0, 2*np.pi, num_points)
+                    # Generate the points of the ellipse
+                    x = mean[0, 0].cpu().numpy() + 1.96* std_dev[0, 0].cpu().numpy() * np.cos(t)
+                    y = mean[0, 1].cpu().numpy() + 1.96 * std_dev[0, 1].cpu().numpy() * np.sin(t)
 
-                        # Generate the points of the ellipse
-                        x = mean[0, 0].cpu().numpy() + 1.96* std_dev[0, 0].cpu().numpy() * np.cos(t)
-                        y = mean[0, 1].cpu().numpy() + 1.96 * std_dev[0, 1].cpu().numpy() * np.sin(t)
+                    # Add ellipse points to plot
+                    fig.add_trace(go.Scatter(x=x, y=y, mode='lines', fill='toself',
+                                             line=dict(color=color_list[i % len(color_list)]),
+                                             name=f"Point {i}"))
 
-                        # Add ellipse points to plot
-                        fig.add_trace(go.Scatter(x=x, y=y, mode='lines', fill='toself',
-                                                 line=dict(color=color_list[i % len(color_list)]),
-                                                 name=f"Point {i}"))
-
-                        # Add the center of the ellipse to the plot
-                        # Add the center of the ellipse to the plot
-                        fig.add_trace(go.Scatter(x=[mean[0, 0].cpu().numpy()],
-                                                 y=[mean[0, 1].cpu().numpy()],
-                                                 mode='markers',
-                                                 marker=dict(size=10, color=color_list[i % len(color_list)], line=dict(color='black', width=2)),
-                                                 showlegend=False,
-                                                 name=f"Center {i}"))
+                    # Add the center of the ellipse to the plot
+                    # Add the center of the ellipse to the plot
+                    fig.add_trace(go.Scatter(x=[mean[0, 0].cpu().numpy()],
+                                             y=[mean[0, 1].cpu().numpy()],
+                                             mode='markers',
+                                             marker=dict(size=10, color=color_list[i % len(color_list)], line=dict(color='black', width=2)),
+                                             showlegend=False,
+                                             name=f"Center {i}"))
 
 
-                    # Update axes labels
-                    fig.update_xaxes(title_text=col_names_y[0])
-                    fig.update_yaxes(title_text=col_names_y[1])
+                # Update axes labels
+                fig.update_xaxes(title_text=col_names_y[0])
+                fig.update_yaxes(title_text=col_names_y[1])
 
-                    st.session_state.plot = fig
-                    st.session_state.means = means
-                    st.session_state.std_devs=std_devs
-            else:
-                st.error("Please fill in all fields before predicting.")
+                st.session_state.plot = fig
+                st.session_state.means = means
+                st.session_state.std_devs=std_devs
+            #else:
+            #    st.error("Please fill in all fields before predicting.")
 
         with preds_col2:
             st.markdown("##### Visualization of Objective Space")
             st.write("Estimated performance statistics based on <br> available observations", unsafe_allow_html=True)
             if 'plot' in st.session_state:
                 st.write(st.session_state.plot)
+
 
 
         st.markdown("##### Optimization Progress")
@@ -474,7 +475,6 @@ with tab_preds:
 
     else:
        st.write("No file has been uploaded yet")
-
 
 
 
