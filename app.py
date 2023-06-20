@@ -380,6 +380,15 @@ with tab_preds:
 
 
             if st.button("Predict"):
+                #Fixed bug -- updated BO object before predicting
+                #st.write('the train x are',train_x)
+                #st.write('the train y are',train_y_tensor)
+                if 'MOBO' not in st.session_state:
+                    st.session_state.MOBO = MultiObjectiveBO(train_x=train_x, train_y=train_y_tensor, bounds=bounds_tensor)
+                else:
+                    st.session_state.MOBO = MultiObjectiveBO(train_x=train_x, train_y=train_y_tensor, bounds=bounds_tensor)
+
+
                 st.session_state.df_test = df_test  # Store user input
                 complete_rows_mask_test = st.session_state.df_test.notna().all(axis=1)
 
